@@ -121,33 +121,45 @@ class TemporaryPass extends Model
      *
      * Returns the relative storage path (within public disk).
      */
-    public function generateQrCodeImage(?string $payload = null, int $size = 512): string
-    {
-        if (!$this->qr_code_token) {
-            // Ensure a token exists to uniquely identify this pass
-            $this->qr_code_token = (string) str()->uuid();
-        }
+public function generateQrCodeImage(?string $payload = null, int $size = 512): string
+{
+    if (!$this->qr_code_token) {
+        $this->qr_code_token = (string) str()->uuid();
+    }
 
-        $payload ??= $this->qr_code_token;
-        $path = 'qrcodes/' . $this->qr_code_token . '.png';
+    $payload ??= $this->qr_code_token;
+    $path = 'qrcodes/' . $this->qr_code_token . '.png';
 
-        // Defer to simple-qrcode if available; otherwise write a placeholder
+    try {
         if (class_exists(\SimpleSoftwareIO\QrCode\Facades\QrCode::class)) {
             $png = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')
                 ->size($size)
                 ->margin(1)
                 ->errorCorrection('M')
                 ->generate($payload);
-            Storage::disk('public')->put($path, $png);
+
+            $result = Storage::disk('public')->put($path, $png);
+
+            if (!$result) {
+                \Log::error('Storage::put returned false for path: ' . $path);
+                throw new \Exception('Failed to write QR code to storage');
+            }
+
+            \Log::info('QR code generated successfully at: ' . $path);
         } else {
-            // Minimal placeholder image indicating missing QR dependency
             $placeholder = base64_decode('iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAALUlEQVRYR+3PMQEAAAgDINc/9C0YgYy0n0hQFQAAAAAAAAAAAAAAAAAAAAAAwEwG3p3G9r7dAAAAAElFTkSuQmCC');
             Storage::disk('public')->put($path, $placeholder);
+            \Log::warning('SimpleSoftwareIO QrCode class not found, using placeholder');
         }
 
         $this->qr_code_path = $path;
         $this->save();
 
         return $path;
+    } catch (\Exception $e) {
+        \Log::error('QR Generation Exception: ' . $e->getMessage());
+        \Log::error('Stack trace: ' . $e->getTraceAsString());
+        throw $e;
     }
+}
 }
