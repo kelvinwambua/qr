@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     libxml2-dev \
     libzip-dev \
     libicu-dev \
+    libmagickwand-dev \
     zip \
     unzip \
     nginx \
@@ -22,6 +23,8 @@ RUN apt-get update && apt-get install -y \
     default-mysql-client \
     && docker-php-ext-configure intl \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip \
+    && pecl install imagick \
+    && docker-php-ext-enable imagick \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -44,7 +47,7 @@ RUN mkdir -p /var/www/html/storage/logs \
     /var/www/html/storage/framework/views \
     /var/www/html/storage/framework/cache \
     /var/www/html/storage/app/public/id_documents \
-    /var/www/html/storage/app/public/qr_codes \
+    /var/www/html/storage/app/public/qrcodes \
     /var/www/html/bootstrap/cache
 
 RUN echo 'upload_max_filesize = 20M\n\
