@@ -1,16 +1,12 @@
-# Stage 1: Build the frontend assets
-FROM node:18 as frontend
+FROM node:18 AS frontend
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-# Stage 2: Build the application
 FROM php:8.2-fpm
 
-# 1. Install system dependencies
-# We include 'default-mysql-client' so you can run mysql commands in the terminal
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -22,39 +18,70 @@ RUN apt-get update && apt-get install -y \
     nginx \
     supervisor \
     default-mysql-client \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# 2. Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# 3. Set working directory
 WORKDIR /var/www/html
 
-# 4. Copy application code
-COPY . .
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
 
-# 5. Copy frontend assets from Stage 1
+COPY . .
 COPY --from=frontend /app/public/build /var/www/html/public/build
 
-# 6. Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader
+RUN composer dump-autoload --optimize --no-dev
 
-# 7. Configure PHP-FPM to run as Root (As requested)
-# By default, PHP-FPM blocks root. We modify the config to allow it.
 RUN sed -i 's/user = www-data/user = root/g' /usr/local/etc/php-fpm.d/www.conf && \
     sed -i 's/group = www-data/group = root/g' /usr/local/etc/php-fpm.d/www.conf
 
-# 8. Copy Configuration Files
-COPY docker/nginx.conf /etc/nginx/sites-available/default
-COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN echo 'server {\n\
+    listen 8080;\n\
+    root /var/www/html/public;\n\
+    index index.php;\n\
+    client_max_body_size 20M;\n\
+    location / {\n\
+        try_files $uri $uri/ /index.php?$query_string;\n\
+    }\n\
+    location ~ \.php$ {\n\
+        fastcgi_pass 127.0.0.1:9000;\n\
+        fastcgi_index index.php;\n\
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;\n\
+        include fastcgi_params;\n\
+    }\n\
+    location ~ /\.ht {\n\
+        deny all;\n\
+    }\n\
+}\n' > /etc/nginx/sites-available/default
 
-# 9. Fix permissions (Ensure root owns everything)
-RUN chmod +x /usr/local/bin/entrypoint.sh && \
-    chown -R root:root /var/www/html/storage /var/www/html/bootstrap/cache
+RUN echo '[supervisord]\n\
+nodaemon=true\n\
+user=root\n\
+[program:php-fpm]\n\
+command=php-fpm\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/dev/stdout\n\
+stdout_logfile_maxbytes=0\n\
+stderr_logfile=/dev/stderr\n\
+stderr_logfile_maxbytes=0\n\
+[program:nginx]\n\
+command=nginx -g "daemon off;"\n\
+autostart=true\n\
+autorestart=true\n\
+stdout_logfile=/dev/stdout\n\
+stdout_logfile_maxbytes=0\n\
+stderr_logfile=/dev/stderr\n\
+stderr_logfile_maxbytes=0\n' > /etc/supervisor/conf.d/supervisord.conf
 
-# 10. Expose Port
+RUN chown -R root:root /var/www/html/storage /var/www/html/bootstrap/cache && \
+    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+
 EXPOSE 8080
 
-# 11. Start Command
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD php artisan config:cache && \
+    php artisan route:cache && \
+    php artisan view:cache && \
+    /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
