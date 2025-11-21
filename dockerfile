@@ -37,43 +37,62 @@ COPY --from=frontend /app/public/build /var/www/html/public/build
 
 RUN composer dump-autoload --optimize --no-dev
 
+RUN mkdir -p /var/www/html/storage/logs \
+    /var/www/html/storage/framework/sessions \
+    /var/www/html/storage/framework/views \
+    /var/www/html/storage/framework/cache \
+    /var/www/html/bootstrap/cache
+
 RUN sed -i 's/user = www-data/user = root/g' /usr/local/etc/php-fpm.d/www.conf && \
-    sed -i 's/group = www-data/group = root/g' /usr/local/etc/php-fpm.d/www.conf
+    sed -i 's/group = www-data/group = root/g' /usr/local/etc/php-fpm.d/www.conf && \
+    sed -i 's/listen = 127.0.0.1:9000/listen = 0.0.0.0:9000/g' /usr/local/etc/php-fpm.d/www.conf
 
 RUN echo 'server {\n\
     listen 8080;\n\
+    server_name _;\n\
     root /var/www/html/public;\n\
-    index index.php;\n\
+    index index.php index.html;\n\
     client_max_body_size 20M;\n\
+    \n\
     location / {\n\
         try_files $uri $uri/ /index.php?$query_string;\n\
     }\n\
+    \n\
     location ~ \.php$ {\n\
+        try_files $uri =404;\n\
+        fastcgi_split_path_info ^(.+\.php)(/.+)$;\n\
         fastcgi_pass 127.0.0.1:9000;\n\
         fastcgi_index index.php;\n\
-        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;\n\
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;\n\
         include fastcgi_params;\n\
     }\n\
+    \n\
     location ~ /\.ht {\n\
         deny all;\n\
     }\n\
-}\n' > /etc/nginx/sites-available/default
+}\n' > /etc/nginx/sites-enabled/default
+
+RUN rm -f /etc/nginx/sites-enabled/default.dpkg-dist
 
 RUN echo '[supervisord]\n\
 nodaemon=true\n\
 user=root\n\
+\n\
 [program:php-fpm]\n\
-command=php-fpm\n\
+command=php-fpm -F\n\
 autostart=true\n\
 autorestart=true\n\
+priority=5\n\
 stdout_logfile=/dev/stdout\n\
 stdout_logfile_maxbytes=0\n\
 stderr_logfile=/dev/stderr\n\
 stderr_logfile_maxbytes=0\n\
+\n\
 [program:nginx]\n\
 command=nginx -g "daemon off;"\n\
 autostart=true\n\
 autorestart=true\n\
+priority=10\n\
 stdout_logfile=/dev/stdout\n\
 stdout_logfile_maxbytes=0\n\
 stderr_logfile=/dev/stderr\n\
@@ -84,7 +103,8 @@ RUN chown -R root:root /var/www/html/storage /var/www/html/bootstrap/cache && \
 
 EXPOSE 8080
 
-CMD php artisan config:cache && \
+CMD php artisan migrate --force && \
+    php artisan config:cache && \
     php artisan route:cache && \
     php artisan view:cache && \
     /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
