@@ -43,9 +43,17 @@ RUN mkdir -p /var/www/html/storage/logs \
     /var/www/html/storage/framework/cache \
     /var/www/html/bootstrap/cache
 
-RUN sed -i 's/user = www-data/user = root/g' /usr/local/etc/php-fpm.d/www.conf && \
-    sed -i 's/group = www-data/group = root/g' /usr/local/etc/php-fpm.d/www.conf && \
-    sed -i 's/listen = 127.0.0.1:9000/listen = 0.0.0.0:9000/g' /usr/local/etc/php-fpm.d/www.conf
+RUN echo '[www]\n\
+user = www-data\n\
+group = www-data\n\
+listen = 127.0.0.1:9000\n\
+listen.owner = www-data\n\
+listen.group = www-data\n\
+pm = dynamic\n\
+pm.max_children = 5\n\
+pm.start_servers = 2\n\
+pm.min_spare_servers = 1\n\
+pm.max_spare_servers = 3\n' > /usr/local/etc/php-fpm.d/www.conf
 
 RUN echo 'server {\n\
     listen 8080;\n\
@@ -76,7 +84,6 @@ RUN rm -f /etc/nginx/sites-enabled/default.dpkg-dist
 
 RUN echo '[supervisord]\n\
 nodaemon=true\n\
-user=root\n\
 \n\
 [program:php-fpm]\n\
 command=php-fpm -F\n\
@@ -98,7 +105,7 @@ stdout_logfile_maxbytes=0\n\
 stderr_logfile=/dev/stderr\n\
 stderr_logfile_maxbytes=0\n' > /etc/supervisor/conf.d/supervisord.conf
 
-RUN chown -R root:root /var/www/html/storage /var/www/html/bootstrap/cache && \
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache && \
     chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 EXPOSE 8080
