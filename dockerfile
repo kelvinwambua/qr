@@ -113,15 +113,9 @@ stdout_logfile_maxbytes=0\n\
 stderr_logfile=/dev/stderr\n\
 stderr_logfile_maxbytes=0\n' > /etc/supervisor/conf.d/supervisord.conf
 
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache && \
-    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/public/storage && \
+    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/public/storage
 
 EXPOSE 8080
 
-CMD php artisan migrate --force && \
-    php artisan migrate --database=university --force && \
-    php artisan db:seed --class=UniversityMemberSeeder --force && \
-    php artisan config:cache && \
-    php artisan route:cache && \
-    php artisan view:cache && \
-    /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+CMD /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
