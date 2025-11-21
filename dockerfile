@@ -37,11 +37,19 @@ COPY --from=frontend /app/public/build /var/www/html/public/build
 
 RUN composer dump-autoload --optimize --no-dev
 
+RUN php artisan storage:link || true
+
 RUN mkdir -p /var/www/html/storage/logs \
     /var/www/html/storage/framework/sessions \
     /var/www/html/storage/framework/views \
     /var/www/html/storage/framework/cache \
+    /var/www/html/storage/app/public/id_documents \
+    /var/www/html/storage/app/public/qr_codes \
     /var/www/html/bootstrap/cache
+
+RUN echo 'upload_max_filesize = 20M\n\
+post_max_size = 20M\n\
+memory_limit = 256M' > /usr/local/etc/php/conf.d/uploads.ini
 
 RUN echo '[www]\n\
 user = www-data\n\
@@ -111,6 +119,8 @@ RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cac
 EXPOSE 8080
 
 CMD php artisan migrate --force && \
+    php artisan migrate --database=university --force && \
+    php artisan db:seed --class=UniversityMemberSeeder --force && \
     php artisan config:cache && \
     php artisan route:cache && \
     php artisan view:cache && \
