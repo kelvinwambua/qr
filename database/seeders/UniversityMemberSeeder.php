@@ -10,7 +10,7 @@ class UniversityMemberSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::connection('university')->table('university_members')->insert([
+        DB::connection('university')->table('v_university_members')->insert([
             [
                 'id' => 183523,
                 'name' => 'Karanei Kimutai',
